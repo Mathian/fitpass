@@ -10,7 +10,6 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<script src="https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js"></script>
 <style>
 :root{
   --bg:#0d0d0d;--bg2:#141414;--bg3:#1a1a1a;--bg4:#222;
@@ -147,27 +146,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Manrop
 .vis-item-date{font-weight:700}
 .vis-item-time{color:var(--text2);font-size:11px}
 
-/* Scanner */
-#scanner-wrap{position:fixed;inset:0;background:#000;z-index:300;display:none}
-#scanner-wrap.open{display:block}
-#scanner-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-.scanner-ui{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none}
-.scanner-ui>*{pointer-events:auto}
-/* Barcode frame — wide & short for Code 128 */
-.scanner-frame{width:76vw;max-width:320px;height:100px;border:2px solid var(--red);border-radius:6px;box-shadow:0 0 0 9999px rgba(0,0,0,.62);position:relative;flex-shrink:0}
-.scanner-corners::before,.scanner-corners::after{content:'';position:absolute;width:20px;height:20px;border-color:var(--red);border-style:solid}
-.scanner-corners::before{top:-3px;left:-3px;border-width:3px 0 0 3px;border-radius:3px 0 0 3px}
-.scanner-corners::after{bottom:-3px;right:-3px;border-width:0 3px 3px 0;border-radius:0 0 3px 3px}
-.scanner-line{position:absolute;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--red),transparent);animation:scan 1.8s ease-in-out infinite}
-@keyframes scan{0%,100%{top:2px}50%{top:calc(100% - 4px)}}
-.scanner-label{margin-top:20px;color:#fff;font-size:14px;font-weight:700;text-align:center;padding:0 24px}
-.scanner-status{margin-top:6px;color:rgba(255,255,255,.55);font-size:11px;font-weight:600;text-align:center;min-height:16px}
-.scanner-manual{position:absolute;bottom:calc(var(--safe-bot) + 28px);left:0;right:0;display:flex;gap:8px;padding:0 28px}
-.scanner-manual input{flex:1;padding:13px 14px;border-radius:10px;border:1.5px solid rgba(255,255,255,.3);background:rgba(255,255,255,.14);color:#fff;font-family:'Manrope',sans-serif;font-size:16px;font-weight:700;outline:none;text-align:center;letter-spacing:3px}
-.scanner-manual input::placeholder{color:rgba(255,255,255,.38);letter-spacing:.5px;font-size:13px}
-.scanner-manual input:focus{border-color:var(--red)}
-.scanner-manual button{padding:13px 20px;border-radius:10px;border:none;background:var(--red);color:#fff;font-family:'Manrope',sans-serif;font-size:15px;font-weight:800;cursor:pointer}
-.scanner-close{position:absolute;top:calc(var(--safe-top) + 14px);right:14px;width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.15);border:none;color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+/* Scanner overlay removed — using Telegram native QR scanner */
 
 /* Toast */
 .toast{position:fixed;top:calc(var(--safe-top) + 16px);left:50%;transform:translateX(-50%) translateY(-80px);background:var(--bg3);border:1px solid var(--border2);border-radius:30px;padding:10px 20px;font-size:13px;font-weight:700;z-index:500;transition:transform .3s cubic-bezier(.4,0,.2,1);white-space:nowrap;max-width:calc(100% - 32px);text-align:center}
@@ -206,23 +185,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Manrop
 
 <div id="loading-overlay"><div class="spinner"></div></div>
 <div class="toast" id="toast"></div>
-
-<!-- Scanner overlay -->
-<div id="scanner-wrap">
-  <video id="scanner-video" autoplay muted playsinline></video>
-  <div class="scanner-ui">
-    <div class="scanner-frame scanner-corners"><div class="scanner-line"></div></div>
-    <div class="scanner-label">Наведите камеру на штрих-код клиента</div>
-    <div class="scanner-status" id="scanner-status"></div>
-  </div>
-  <div class="scanner-manual">
-    <input id="manual-code" type="tel" inputmode="numeric" maxlength="6"
-      placeholder="Ввести код вручную" oninput="this.value=this.value.replace(/\D/g,'').slice(0,6)"
-      onkeydown="if(event.key==='Enter')manualSubmit()"/>
-    <button onclick="manualSubmit()">→</button>
-  </div>
-  <button class="scanner-close" onclick="closeScanner()">✕</button>
-</div>
 
 <!-- Splash -->
 <div class="screen active" id="s-splash">
@@ -283,8 +245,17 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Manrop
 
       <button class="scan-btn" onclick="startScanner()">
         <span style="font-size:28px">📷</span>
-        Сканировать пропуск
+        Сканировать QR-пропуск
       </button>
+
+      <!-- Manual code entry fallback -->
+      <div style="display:flex;gap:8px;padding:0 16px;margin-bottom:16px">
+        <input id="manual-code" class="inp" type="tel" inputmode="numeric" maxlength="6"
+          placeholder="Ввести код вручную" style="margin:0;flex:1;padding:13px 14px;letter-spacing:2px"
+          oninput="this.value=this.value.replace(/\D/g,'').slice(0,6)"
+          onkeydown="if(event.key==='Enter')manualSubmit()"/>
+        <button onclick="manualSubmit()" style="padding:13px 18px;border-radius:var(--r2);border:none;background:var(--red);color:#fff;font-family:'Manrope',sans-serif;font-size:15px;font-weight:800;cursor:pointer">→</button>
+      </div>
 
       <div class="recent-visits">
         <div class="section-hdr">Последние визиты</div>
@@ -552,58 +523,26 @@ async function loadHomePage() {
   loading(false);
 }
 
-// ── Scanner ──
-let scannerRunning = false;
+// ── Scanner — Telegram native QR ──
 let scannedUid = null;
-let _codeReader = null;
 
-async function startScanner() {
-  document.getElementById('scanner-wrap').classList.add('open');
-  document.getElementById('manual-code').value = '';
-  document.getElementById('scanner-status').textContent = 'Запуск...';
-  scannerRunning = true;
-
-  if (!window.ZXing) {
-    document.getElementById('scanner-status').textContent = 'Библиотека не загружена';
-    toast('Ошибка загрузки сканера — введите код вручную', 'err');
-    return;
-  }
-
-  try {
-    _codeReader = new ZXing.BrowserMultiFormatReader();
-
-    // Use constraints so we explicitly request the rear (environment) camera
-    await _codeReader.decodeFromConstraints(
-      { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } },
-      'scanner-video',
-      (result, err) => {
-        if (!scannerRunning) return;
-        if (result) {
-          const text = result.getText();
-          closeScanner();
-          handleScannedCode(text);
-        }
-        // err fires on every frame without a barcode — intentionally ignored
-      }
-    );
-
-    document.getElementById('scanner-status').textContent = 'Сканирование...';
-  } catch(e) {
-    document.getElementById('scanner-status').textContent = 'Нет доступа к камере';
-    toast('Нет доступа к камере — введите код вручную', 'err');
-  }
+function startScanner() {
+  tg.showScanQrPopup({ text: 'Наведите камеру на QR-код клиента' }, function(result) {
+    if (result) {
+      tg.closeScanQrPopup();
+      handleScannedCode(result);
+    }
+    return true; // keep popup open until we get a result
+  });
 }
 
 function closeScanner() {
-  scannerRunning = false;
-  if (_codeReader) { try { _codeReader.reset(); } catch(e) {} _codeReader = null; }
-  document.getElementById('scanner-wrap').classList.remove('open');
+  try { tg.closeScanQrPopup(); } catch(e) {}
 }
 
 function manualSubmit() {
   const val = (document.getElementById('manual-code').value || '').trim();
   if (!val) { toast('Введите код клиента', 'err'); return; }
-  closeScanner();
   handleScannedCode(val);
 }
 
