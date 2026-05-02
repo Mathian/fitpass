@@ -10,7 +10,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <style>
 :root{
   --bg:#0c0c0c; --bg2:#131313; --bg3:#1b1b1b; --bg4:#222;
@@ -94,10 +94,14 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Manrop
 /* QR card */
 .barcode-card{margin:14px 16px;background:linear-gradient(145deg,var(--bg2) 0%,var(--bg3) 100%);border:1px solid var(--border2);border-radius:20px;padding:20px;text-align:center;position:relative;overflow:hidden}
 .barcode-card::after{content:'';position:absolute;top:-50px;right:-50px;width:140px;height:140px;border-radius:50%;background:var(--reddim);pointer-events:none}
-.bc-label{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:2.5px;color:var(--text3);margin-bottom:12px}
-.barcode-wrap{background:#fff;border-radius:16px;padding:14px;display:inline-block}
-#qr-canvas{display:block;border-radius:8px}
-.bc-code-text{font-size:13px;color:#333;margin-top:10px;letter-spacing:3px;font-family:monospace;font-weight:700;text-align:center}
+.bc-label{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:2.5px;color:var(--text3);margin-bottom:14px}
+.barcode-wrap{background:#fff;border-radius:16px;padding:14px;display:inline-block;line-height:0}
+#qr-canvas{display:block;width:192px;height:192px}
+#qr-canvas img{display:block!important;width:192px!important;height:192px!important;border-radius:8px}
+#qr-canvas canvas{display:none!important}
+.bc-id-row{margin-top:14px;display:flex;align-items:center;justify-content:center;gap:8px}
+.bc-id-label{font-size:11px;font-weight:700;color:var(--text2)}
+.bc-id-val{font-size:20px;font-weight:900;color:var(--text);letter-spacing:4px;font-family:monospace}
 
 /* Status */
 .status-card{margin:0 16px 12px;border-radius:var(--r);border:1.5px solid;padding:13px 16px;display:flex;align-items:center;gap:12px}
@@ -344,10 +348,13 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Manrop
       </div>
 
       <div class="barcode-card">
-        <div class="bc-label">Ваш персональный QR-пропуск</div>
+        <div class="bc-label">Ваш персональный пропуск</div>
         <div class="barcode-wrap">
-          <canvas id="qr-canvas"></canvas>
-          <div class="bc-code-text" id="bc-code-text"></div>
+          <div id="qr-canvas"></div>
+        </div>
+        <div class="bc-id-row">
+          <span class="bc-id-label">Ваш ID:</span>
+          <span class="bc-id-val" id="bc-code-text">—</span>
         </div>
       </div>
 
@@ -704,22 +711,47 @@ function fmtDateTime(iso){if(!iso)return'—';const d=new Date(iso);return d.toL
 function fmtDur(sec){return`${pad(Math.floor(sec/3600))}:${pad(Math.floor(sec%3600/60))}:${pad(sec%60)}`;}
 
 // ══════════════════════════════════════════
-// QR CODE — via qrcode.js
+// QR CODE — via qrcodejs
 // ══════════════════════════════════════════
 function generateBarcodeNum(){
   return String(Math.floor(100000+Math.random()*900000));
 }
+
 function drawBarcode(num){
-  const canvas=document.getElementById('qr-canvas');
-  if(!canvas)return;
-  QRCode.toCanvas(canvas,String(num),{
-    width:200,
-    margin:1,
-    color:{dark:'#000000',light:'#ffffff'}
-  },function(err){
-    if(err)console.error('QR error',err);
-  });
-  document.getElementById('bc-code-text').textContent=String(num);
+  const textEl = document.getElementById('bc-code-text');
+  if(textEl) textEl.textContent = String(num);
+
+  // If lib not yet loaded, retry in 200ms
+  if(typeof QRCode === 'undefined'){
+    setTimeout(() => drawBarcode(num), 200);
+    return;
+  }
+
+  const container = document.getElementById('qr-canvas');
+  if(!container) return;
+
+  // Clear any previous QR render
+  container.innerHTML = '';
+
+  try {
+    new QRCode(container, {
+      text: String(num),
+      width: 192,
+      height: 192,
+      colorDark: '#000000',
+      colorLight: '#ffffff',
+      correctLevel: QRCode.CorrectLevel.M
+    });
+    // qrcodejs injects both <img> and <canvas>; hide canvas, show img
+    setTimeout(() => {
+      const img = container.querySelector('img');
+      if(img){ img.style.cssText = 'display:block!important;width:192px!important;height:192px!important;border-radius:8px'; }
+      const cv = container.querySelector('canvas');
+      if(cv) cv.style.display = 'none';
+    }, 0);
+  } catch(e){
+    console.error('QR error', e);
+  }
 }
 
 // ══════════════════════════════════════════
@@ -732,6 +764,15 @@ window.addEventListener('DOMContentLoaded',async()=>{
 
   if(new URLSearchParams(location.search).get('reset')==='1'){localStorage.clear();location.replace(location.pathname);return;}
   load();
+
+  // ── Cache bust: если в fp_s хранятся старые данные от предыдущей версии
+  // (например, там мог остаться устаревший STATE.user), сбрасываем user-часть
+  // чтобы гарантированно перечитать с сервера
+  if(STATE.user){
+    // Принудительно очищаем закешированный user — всегда читаем с Firebase
+    STATE.user = null;
+    save();
+  }
   const urlUid=new URLSearchParams(location.search).get('uid');
   if(urlUid&&urlUid.length===64){STATE.uid=urlUid;save();history.replaceState(null,'',location.pathname);}
 
