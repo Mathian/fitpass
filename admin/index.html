@@ -572,16 +572,20 @@ async function startScanner() {
   try {
     _codeReader = new ZXing.BrowserMultiFormatReader();
 
-    // decodeFromVideoDevice(deviceId=null → env camera, elementId, callback)
-    await _codeReader.decodeFromVideoDevice(null, 'scanner-video', (result, err) => {
-      if (!scannerRunning) return;
-      if (result) {
-        const text = result.getText();
-        closeScanner();
-        handleScannedCode(text);
+    // Use constraints so we explicitly request the rear (environment) camera
+    await _codeReader.decodeFromConstraints(
+      { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } },
+      'scanner-video',
+      (result, err) => {
+        if (!scannerRunning) return;
+        if (result) {
+          const text = result.getText();
+          closeScanner();
+          handleScannedCode(text);
+        }
+        // err fires on every frame without a barcode — intentionally ignored
       }
-      // err fires constantly when nothing is found — intentionally ignored
-    });
+    );
 
     document.getElementById('scanner-status').textContent = 'Сканирование...';
   } catch(e) {
