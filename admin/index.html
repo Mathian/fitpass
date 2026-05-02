@@ -10,8 +10,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<!-- ZXing for barcode scanning -->
-<script src="https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <style>
 :root{
   --bg:#0d0d0d;--bg2:#141414;--bg3:#1a1a1a;--bg4:#222;
@@ -544,51 +543,44 @@ async function startScanner() {
   scannerRunning = true;
 
   try {
-    scannerStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    scannerStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
     video.srcObject = scannerStream;
-    video.play();
+    await video.play();
 
-    // Use ZXing for barcode decoding
-    if (window.ZXing) {
-      const hints = new Map();
-      hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.CODE_128, ZXing.BarcodeFormat.QR_CODE]);
-      const reader = new ZXing.BrowserMultiFormatReader(hints);
-      try {
-        const result = await reader.decodeOnceFromVideoElement(video);
-        if (scannerRunning && result) {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+
+    const tick = () => {
+      if (!scannerRunning) return;
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imageData.data, imageData.width, imageData.height, {
+          inversionAttempts: 'dontInvert'
+        });
+        if (code && code.data) {
           closeScanner();
-          await handleScannedCode(result.getText());
+          handleScannedCode(code.data);
+          return;
         }
-      } catch(e) {}
-    } else {
-      // Fallback: decode from canvas every 500ms
-      decodeFallback(video);
-    }
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+
   } catch(e) {
     toast('Нет доступа к камере','err');
     closeScanner();
   }
 }
 
-function decodeFallback(video) {
-  if (!scannerRunning) return;
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
-  const decode = () => {
-    if (!scannerRunning) return;
-    if (video.readyState === video.HAVE_ENOUGH_DATA) {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      ctx.drawImage(video, 0, 0);
-    }
-    setTimeout(decode, 500);
-  };
-  decode();
-}
-
 function closeScanner() {
   scannerRunning = false;
-  if (scannerStream) { scannerStream.getTracks().forEach(t=>t.stop()); scannerStream = null; }
+  if (scannerStream) { scannerStream.getTracks().forEach(t => t.stop()); scannerStream = null; }
   document.getElementById('scanner-wrap').classList.remove('open');
 }
 
