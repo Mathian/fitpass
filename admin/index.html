@@ -10,7 +10,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<script src="https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js"></script>
 <style>
 :root{
   --bg:#0d0d0d;--bg2:#141414;--bg3:#1a1a1a;--bg4:#222;
@@ -148,19 +148,26 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Manrop
 .vis-item-time{color:var(--text2);font-size:11px}
 
 /* Scanner */
-#scanner-wrap{position:fixed;inset:0;background:#000;z-index:300;display:none;flex-direction:column;align-items:center;justify-content:center}
-#scanner-wrap.open{display:flex}
-#scanner-video{width:100%;height:100%;object-fit:cover;position:absolute;inset:0}
-.scanner-frame{position:absolute;width:240px;height:240px;border:2px solid var(--red);border-radius:12px;box-shadow:0 0 0 9999px rgba(0,0,0,.65)}
-.scanner-line{position:absolute;width:100%;height:2px;background:linear-gradient(90deg,transparent,var(--red),transparent);animation:scan 2s ease-in-out infinite}
-@keyframes scan{0%,100%{top:4px}50%{top:calc(100% - 6px)}}
-.scanner-label{position:absolute;bottom:200px;color:#fff;font-size:14px;font-weight:700;text-align:center;padding:0 24px;letter-spacing:.3px}
-.scanner-status{position:absolute;bottom:172px;color:rgba(255,255,255,.6);font-size:11px;font-weight:600;text-align:center}
-.scanner-manual{position:absolute;bottom:90px;display:flex;gap:8px;padding:0 32px;width:100%}
-.scanner-manual input{flex:1;padding:12px 14px;border-radius:10px;border:1.5px solid rgba(255,255,255,.25);background:rgba(255,255,255,.12);color:#fff;font-family:'Manrope',sans-serif;font-size:15px;font-weight:700;outline:none;text-align:center;letter-spacing:2px}
-.scanner-manual input::placeholder{color:rgba(255,255,255,.4);letter-spacing:.5px}
-.scanner-manual button{padding:12px 18px;border-radius:10px;border:none;background:var(--red);color:#fff;font-family:'Manrope',sans-serif;font-size:15px;font-weight:800;cursor:pointer}
-.scanner-close{position:absolute;top:calc(var(--safe-top) + 16px);right:16px;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.15);border:none;color:#fff;font-size:20px;cursor:pointer;z-index:1}
+#scanner-wrap{position:fixed;inset:0;background:#000;z-index:300;display:none}
+#scanner-wrap.open{display:block}
+#scanner-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.scanner-ui{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none}
+.scanner-ui>*{pointer-events:auto}
+/* Barcode frame — wide & short for Code 128 */
+.scanner-frame{width:76vw;max-width:320px;height:100px;border:2px solid var(--red);border-radius:6px;box-shadow:0 0 0 9999px rgba(0,0,0,.62);position:relative;flex-shrink:0}
+.scanner-corners::before,.scanner-corners::after{content:'';position:absolute;width:20px;height:20px;border-color:var(--red);border-style:solid}
+.scanner-corners::before{top:-3px;left:-3px;border-width:3px 0 0 3px;border-radius:3px 0 0 3px}
+.scanner-corners::after{bottom:-3px;right:-3px;border-width:0 3px 3px 0;border-radius:0 0 3px 3px}
+.scanner-line{position:absolute;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--red),transparent);animation:scan 1.8s ease-in-out infinite}
+@keyframes scan{0%,100%{top:2px}50%{top:calc(100% - 4px)}}
+.scanner-label{margin-top:20px;color:#fff;font-size:14px;font-weight:700;text-align:center;padding:0 24px}
+.scanner-status{margin-top:6px;color:rgba(255,255,255,.55);font-size:11px;font-weight:600;text-align:center;min-height:16px}
+.scanner-manual{position:absolute;bottom:calc(var(--safe-bot) + 28px);left:0;right:0;display:flex;gap:8px;padding:0 28px}
+.scanner-manual input{flex:1;padding:13px 14px;border-radius:10px;border:1.5px solid rgba(255,255,255,.3);background:rgba(255,255,255,.14);color:#fff;font-family:'Manrope',sans-serif;font-size:16px;font-weight:700;outline:none;text-align:center;letter-spacing:3px}
+.scanner-manual input::placeholder{color:rgba(255,255,255,.38);letter-spacing:.5px;font-size:13px}
+.scanner-manual input:focus{border-color:var(--red)}
+.scanner-manual button{padding:13px 20px;border-radius:10px;border:none;background:var(--red);color:#fff;font-family:'Manrope',sans-serif;font-size:15px;font-weight:800;cursor:pointer}
+.scanner-close{position:absolute;top:calc(var(--safe-top) + 14px);right:14px;width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.15);border:none;color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center}
 
 /* Toast */
 .toast{position:fixed;top:calc(var(--safe-top) + 16px);left:50%;transform:translateX(-50%) translateY(-80px);background:var(--bg3);border:1px solid var(--border2);border-radius:30px;padding:10px 20px;font-size:13px;font-weight:700;z-index:500;transition:transform .3s cubic-bezier(.4,0,.2,1);white-space:nowrap;max-width:calc(100% - 32px);text-align:center}
@@ -203,11 +210,15 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Manrop
 <!-- Scanner overlay -->
 <div id="scanner-wrap">
   <video id="scanner-video" autoplay muted playsinline></video>
-  <div class="scanner-frame"><div class="scanner-line"></div></div>
-  <div class="scanner-label">Наведите камеру на QR-код клиента</div>
-  <div class="scanner-status" id="scanner-status">Сканирование...</div>
+  <div class="scanner-ui">
+    <div class="scanner-frame scanner-corners"><div class="scanner-line"></div></div>
+    <div class="scanner-label">Наведите камеру на штрих-код клиента</div>
+    <div class="scanner-status" id="scanner-status"></div>
+  </div>
   <div class="scanner-manual">
-    <input id="manual-code" type="tel" inputmode="numeric" maxlength="8" placeholder="Код вручную (8 цифр)" oninput="this.value=this.value.replace(/\D/g,'')"/>
+    <input id="manual-code" type="tel" inputmode="numeric" maxlength="6"
+      placeholder="Ввести код вручную" oninput="this.value=this.value.replace(/\D/g,'').slice(0,6)"
+      onkeydown="if(event.key==='Enter')manualSubmit()"/>
     <button onclick="manualSubmit()">→</button>
   </div>
   <button class="scanner-close" onclick="closeScanner()">✕</button>
@@ -542,73 +553,46 @@ async function loadHomePage() {
 }
 
 // ── Scanner ──
-let scannerStream = null;
 let scannerRunning = false;
 let scannedUid = null;
+let _codeReader = null;
 
 async function startScanner() {
-  const wrap = document.getElementById('scanner-wrap');
-  const video = document.getElementById('scanner-video');
-  const statusEl = document.getElementById('scanner-status');
-  const manualInput = document.getElementById('manual-code');
-
-  wrap.classList.add('open');
+  document.getElementById('scanner-wrap').classList.add('open');
+  document.getElementById('manual-code').value = '';
+  document.getElementById('scanner-status').textContent = 'Запуск...';
   scannerRunning = true;
-  if (manualInput) manualInput.value = '';
-  if (statusEl) statusEl.textContent = 'Запуск камеры...';
+
+  if (!window.ZXing) {
+    document.getElementById('scanner-status').textContent = 'Библиотека не загружена';
+    toast('Ошибка загрузки сканера — введите код вручную', 'err');
+    return;
+  }
 
   try {
-    scannerStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }
-    });
-    video.srcObject = scannerStream;
+    _codeReader = new ZXing.BrowserMultiFormatReader();
 
-    // Wait for video to be ready
-    await new Promise((resolve, reject) => {
-      video.onloadedmetadata = resolve;
-      video.onerror = reject;
-      setTimeout(resolve, 3000); // safety timeout
-    });
-    await video.play();
-
-    if (statusEl) statusEl.textContent = 'Сканирование...';
-
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    let lastScan = 0;
-
-    const tick = () => {
+    // decodeFromVideoDevice(deviceId=null → env camera, elementId, callback)
+    await _codeReader.decodeFromVideoDevice(null, 'scanner-video', (result, err) => {
       if (!scannerRunning) return;
-      const now = Date.now();
-      // Scan every 150ms max — no need to scan every single frame
-      if (now - lastScan >= 150 && video.readyState === video.HAVE_ENOUGH_DATA && video.videoWidth > 0) {
-        lastScan = now;
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const code = jsQR(imageData.data, imageData.width, imageData.height, {
-          inversionAttempts: 'dontInvert'
-        });
-        if (code && code.data) {
-          closeScanner();
-          handleScannedCode(code.data);
-          return;
-        }
+      if (result) {
+        const text = result.getText();
+        closeScanner();
+        handleScannedCode(text);
       }
-      requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
+      // err fires constantly when nothing is found — intentionally ignored
+    });
 
+    document.getElementById('scanner-status').textContent = 'Сканирование...';
   } catch(e) {
-    if (statusEl) statusEl.textContent = 'Нет доступа к камере';
+    document.getElementById('scanner-status').textContent = 'Нет доступа к камере';
     toast('Нет доступа к камере — введите код вручную', 'err');
   }
 }
 
 function closeScanner() {
   scannerRunning = false;
-  if (scannerStream) { scannerStream.getTracks().forEach(t => t.stop()); scannerStream = null; }
+  if (_codeReader) { try { _codeReader.reset(); } catch(e) {} _codeReader = null; }
   document.getElementById('scanner-wrap').classList.remove('open');
 }
 
@@ -625,8 +609,8 @@ async function handleScannedCode(code) {
   let uid = null;
 
   loading(true);
-  if (/^\d{8}$/.test(clean)) {
-    // 8-digit barcode number — look up by barcodeNum field
+  if (/^\d{6}$/.test(clean)) {
+    // 6-digit barcode number — look up by barcodeNum field
     const results = await dbQuery('users','barcodeNum','==',clean);
     if (results.length > 0) { user = results[0]; uid = user.id; }
   } else {
