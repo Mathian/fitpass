@@ -29,17 +29,24 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Manrop
 
 /* Login */
 #s-login{align-items:center;justify-content:center;background:radial-gradient(ellipse 80% 60% at 50% 40%,rgba(229,57,53,.12) 0%,transparent 70%),var(--bg);padding:24px}
-.login-box{width:100%;max-width:360px;background:var(--bg2);border:1px solid var(--border2);border-radius:20px;padding:32px}
-.login-logo{text-align:center;margin-bottom:28px}
+.login-logo{text-align:center;margin-bottom:36px}
 .login-logo h1{font-family:'Bebas Neue',sans-serif;font-size:48px;letter-spacing:3px;line-height:1}
 .login-logo h1 span{color:var(--red)}
 .login-logo p{font-size:11px;color:var(--text3);letter-spacing:2px;text-transform:uppercase;margin-top:4px}
-.inp-label{font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
-.inp{width:100%;padding:14px 16px;border-radius:var(--r2);border:1.5px solid var(--border2);background:var(--bg3);color:var(--text);font-family:'Manrope',sans-serif;font-size:15px;font-weight:600;outline:none;transition:border .2s;margin-bottom:12px}
-.inp:focus{border-color:var(--red)}
-.btn-red{width:100%;padding:16px;border-radius:var(--r);border:none;background:var(--red);color:#fff;font-family:'Manrope',sans-serif;font-size:16px;font-weight:800;cursor:pointer;transition:opacity .2s}
-.btn-red:active{opacity:.8}
-.btn-red:disabled{opacity:.4;cursor:not-allowed}
+
+/* PIN dots */
+.pin-dots{display:flex;gap:16px;justify-content:center;margin-bottom:36px}
+.pin-dot{width:16px;height:16px;border-radius:50%;border:2px solid var(--border2);background:transparent;transition:all .15s}
+.pin-dot.filled{background:var(--red);border-color:var(--red);transform:scale(1.1)}
+.pin-dot.shake{animation:dot-shake .3s ease}
+@keyframes dot-shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+
+/* Numpad */
+.numpad{display:grid;grid-template-columns:repeat(3,72px);gap:12px;justify-content:center}
+.np-btn{width:72px;height:72px;border-radius:50%;border:1.5px solid var(--border2);background:var(--bg2);color:var(--text);font-family:'Manrope',sans-serif;font-size:22px;font-weight:700;cursor:pointer;transition:all .12s;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent}
+.np-btn:active{background:var(--red);border-color:var(--red);transform:scale(.93)}
+.np-btn.del{font-size:18px;color:var(--text2)}
+.np-btn.empty{border:none;background:transparent;cursor:default}
 
 /* Splash */
 #s-splash{align-items:center;justify-content:center;background:radial-gradient(ellipse 80% 60% at 50% 40%,rgba(229,57,53,.15) 0%,transparent 70%),var(--bg)}
@@ -197,16 +204,29 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Manrop
 
 <!-- Login -->
 <div class="screen" id="s-login">
-  <div class="login-box">
-    <div class="login-logo">
-      <h1>FIT<span>PASS</span></h1>
-      <p>Администратор</p>
-    </div>
-    <div class="inp-label">Логин</div>
-    <input class="inp" id="login-user" placeholder="admin" autocomplete="username"/>
-    <div class="inp-label">Пароль</div>
-    <input class="inp" id="login-pass" type="password" placeholder="••••••" autocomplete="current-password"/>
-    <button class="btn-red" onclick="doLogin()">Войти →</button>
+  <div class="login-logo">
+    <h1>FIT<span>PASS</span></h1>
+    <p>Администратор</p>
+  </div>
+  <div class="pin-dots">
+    <div class="pin-dot" id="pd-0"></div>
+    <div class="pin-dot" id="pd-1"></div>
+    <div class="pin-dot" id="pd-2"></div>
+    <div class="pin-dot" id="pd-3"></div>
+  </div>
+  <div class="numpad">
+    <button class="np-btn" onclick="pinPress('1')">1</button>
+    <button class="np-btn" onclick="pinPress('2')">2</button>
+    <button class="np-btn" onclick="pinPress('3')">3</button>
+    <button class="np-btn" onclick="pinPress('4')">4</button>
+    <button class="np-btn" onclick="pinPress('5')">5</button>
+    <button class="np-btn" onclick="pinPress('6')">6</button>
+    <button class="np-btn" onclick="pinPress('7')">7</button>
+    <button class="np-btn" onclick="pinPress('8')">8</button>
+    <button class="np-btn" onclick="pinPress('9')">9</button>
+    <div class="np-btn empty"></div>
+    <button class="np-btn" onclick="pinPress('0')">0</button>
+    <button class="np-btn del" onclick="pinBackspace()">⌫</button>
   </div>
 </div>
 
@@ -402,25 +422,46 @@ firebase.auth().signInAnonymously();
 const tg = (window.Telegram && window.Telegram.WebApp) || { ready:()=>{}, expand:()=>{} };
 tg.ready(); tg.expand();
 
-// ── Admin credentials (change these!) ──
-const ADMIN_USER = 'admin';
-const ADMIN_PASS = 'fitpass2024';
+// ── Admin access key ──
+const ACCESS_KEY = '0000';
 const RESET_PIN = '4545';
 
-// ── Auth ──
-function isLoggedIn() { return sessionStorage.getItem('fp_admin_auth') === '1'; }
-function doLogin() {
-  const u = document.getElementById('login-user').value.trim();
-  const p = document.getElementById('login-pass').value;
-  if (u === ADMIN_USER && p === ADMIN_PASS) {
+// ── PIN pad ──
+let _pin = '';
+function pinPress(d) {
+  if (_pin.length >= 4) return;
+  _pin += d;
+  _updateDots();
+  if (_pin.length === 4) setTimeout(_checkPin, 120);
+}
+function pinBackspace() {
+  _pin = _pin.slice(0, -1);
+  _updateDots();
+}
+function _updateDots() {
+  for (let i = 0; i < 4; i++) {
+    document.getElementById('pd-' + i).classList.toggle('filled', i < _pin.length);
+  }
+}
+function _checkPin() {
+  if (_pin === ACCESS_KEY) {
     sessionStorage.setItem('fp_admin_auth', '1');
+    _pin = '';
+    _updateDots();
     showScreen('s-main');
     loadHomePage();
   } else {
-    toast('Неверный логин или пароль','err');
+    document.querySelectorAll('.pin-dot').forEach(d => {
+      d.classList.add('shake');
+      setTimeout(() => d.classList.remove('shake'), 300);
+    });
+    setTimeout(() => { _pin = ''; _updateDots(); }, 350);
   }
 }
-function doLogout() { sessionStorage.removeItem('fp_admin_auth'); showScreen('s-login'); }
+
+// ── Auth ──
+function isLoggedIn() { return sessionStorage.getItem('fp_admin_auth') === '1'; }
+function doLogout() { sessionStorage.removeItem('fp_admin_auth'); _pin = ''; _updateDots(); showScreen('s-login'); }
 
 // ── DB helpers ──
 async function dbGet(col, doc) {
@@ -482,7 +523,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('s-splash').classList.remove('active');
   if (isLoggedIn()) { showScreen('s-main'); loadHomePage(); }
   else showScreen('s-login');
-  document.getElementById('login-pass').addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
 });
 
 // ── Home ──
