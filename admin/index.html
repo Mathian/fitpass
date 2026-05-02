@@ -150,12 +150,17 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Manrop
 /* Scanner */
 #scanner-wrap{position:fixed;inset:0;background:#000;z-index:300;display:none;flex-direction:column;align-items:center;justify-content:center}
 #scanner-wrap.open{display:flex}
-#scanner-video{width:100%;max-width:400px;border-radius:0}
-.scanner-frame{position:absolute;width:240px;height:100px;border:2px solid var(--red);border-radius:4px;box-shadow:0 0 0 9999px rgba(0,0,0,.6)}
+#scanner-video{width:100%;height:100%;object-fit:cover;position:absolute;inset:0}
+.scanner-frame{position:absolute;width:240px;height:240px;border:2px solid var(--red);border-radius:12px;box-shadow:0 0 0 9999px rgba(0,0,0,.65)}
 .scanner-line{position:absolute;width:100%;height:2px;background:linear-gradient(90deg,transparent,var(--red),transparent);animation:scan 2s ease-in-out infinite}
-@keyframes scan{0%,100%{top:0}50%{top:calc(100% - 2px)}}
-.scanner-label{position:absolute;bottom:120px;color:#fff;font-size:14px;font-weight:700;text-align:center;padding:0 24px}
-.scanner-close{position:absolute;top:calc(var(--safe-top) + 16px);right:16px;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.1);border:none;color:#fff;font-size:20px;cursor:pointer}
+@keyframes scan{0%,100%{top:4px}50%{top:calc(100% - 6px)}}
+.scanner-label{position:absolute;bottom:200px;color:#fff;font-size:14px;font-weight:700;text-align:center;padding:0 24px;letter-spacing:.3px}
+.scanner-status{position:absolute;bottom:172px;color:rgba(255,255,255,.6);font-size:11px;font-weight:600;text-align:center}
+.scanner-manual{position:absolute;bottom:90px;display:flex;gap:8px;padding:0 32px;width:100%}
+.scanner-manual input{flex:1;padding:12px 14px;border-radius:10px;border:1.5px solid rgba(255,255,255,.25);background:rgba(255,255,255,.12);color:#fff;font-family:'Manrope',sans-serif;font-size:15px;font-weight:700;outline:none;text-align:center;letter-spacing:2px}
+.scanner-manual input::placeholder{color:rgba(255,255,255,.4);letter-spacing:.5px}
+.scanner-manual button{padding:12px 18px;border-radius:10px;border:none;background:var(--red);color:#fff;font-family:'Manrope',sans-serif;font-size:15px;font-weight:800;cursor:pointer}
+.scanner-close{position:absolute;top:calc(var(--safe-top) + 16px);right:16px;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.15);border:none;color:#fff;font-size:20px;cursor:pointer;z-index:1}
 
 /* Toast */
 .toast{position:fixed;top:calc(var(--safe-top) + 16px);left:50%;transform:translateX(-50%) translateY(-80px);background:var(--bg3);border:1px solid var(--border2);border-radius:30px;padding:10px 20px;font-size:13px;font-weight:700;z-index:500;transition:transform .3s cubic-bezier(.4,0,.2,1);white-space:nowrap;max-width:calc(100% - 32px);text-align:center}
@@ -199,7 +204,12 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Manrop
 <div id="scanner-wrap">
   <video id="scanner-video" autoplay muted playsinline></video>
   <div class="scanner-frame"><div class="scanner-line"></div></div>
-  <div class="scanner-label">Наведите камеру на штрих-код клиента</div>
+  <div class="scanner-label">Наведите камеру на QR-код клиента</div>
+  <div class="scanner-status" id="scanner-status">Сканирование...</div>
+  <div class="scanner-manual">
+    <input id="manual-code" type="tel" inputmode="numeric" maxlength="8" placeholder="Код вручную (8 цифр)" oninput="this.value=this.value.replace(/\D/g,'')"/>
+    <button onclick="manualSubmit()">→</button>
+  </div>
   <button class="scanner-close" onclick="closeScanner()">✕</button>
 </div>
 
@@ -342,7 +352,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Manrop
       </div>
       <div id="act-visits-input">
         <div class="mo-label">Количество занятий</div>
-        <input class="mo-inp" id="act-count" type="number" placeholder="12" min="1"/>
+        <input class="mo-inp" id="act-count" type="number" placeholder="10" min="1" value="10"/>
       </div>
       <div class="mo-label">Срок действия (месяцев)</div>
       <input class="mo-inp" id="act-months" type="number" placeholder="1" min="1" value="1"/>
@@ -539,22 +549,40 @@ let scannedUid = null;
 async function startScanner() {
   const wrap = document.getElementById('scanner-wrap');
   const video = document.getElementById('scanner-video');
+  const statusEl = document.getElementById('scanner-status');
+  const manualInput = document.getElementById('manual-code');
+
   wrap.classList.add('open');
   scannerRunning = true;
+  if (manualInput) manualInput.value = '';
+  if (statusEl) statusEl.textContent = 'Запуск камеры...';
 
   try {
     scannerStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }
     });
     video.srcObject = scannerStream;
+
+    // Wait for video to be ready
+    await new Promise((resolve, reject) => {
+      video.onloadedmetadata = resolve;
+      video.onerror = reject;
+      setTimeout(resolve, 3000); // safety timeout
+    });
     await video.play();
 
+    if (statusEl) statusEl.textContent = 'Сканирование...';
+
     const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    let lastScan = 0;
 
     const tick = () => {
       if (!scannerRunning) return;
-      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+      const now = Date.now();
+      // Scan every 150ms max — no need to scan every single frame
+      if (now - lastScan >= 150 && video.readyState === video.HAVE_ENOUGH_DATA && video.videoWidth > 0) {
+        lastScan = now;
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -573,8 +601,8 @@ async function startScanner() {
     requestAnimationFrame(tick);
 
   } catch(e) {
-    toast('Нет доступа к камере','err');
-    closeScanner();
+    if (statusEl) statusEl.textContent = 'Нет доступа к камере';
+    toast('Нет доступа к камере — введите код вручную', 'err');
   }
 }
 
@@ -582,6 +610,13 @@ function closeScanner() {
   scannerRunning = false;
   if (scannerStream) { scannerStream.getTracks().forEach(t => t.stop()); scannerStream = null; }
   document.getElementById('scanner-wrap').classList.remove('open');
+}
+
+function manualSubmit() {
+  const val = (document.getElementById('manual-code').value || '').trim();
+  if (!val) { toast('Введите код клиента', 'err'); return; }
+  closeScanner();
+  handleScannedCode(val);
 }
 
 async function handleScannedCode(code) {
@@ -634,7 +669,7 @@ async function handleScannedCode(code) {
 
   // Reset act form
   document.getElementById('act-form').style.display = 'none';
-  document.getElementById('act-count').value = '';
+  document.getElementById('act-count').value = '10';
   document.getElementById('act-months').value = '1';
   document.getElementById('act-price').value = '';
   setActType('visits', document.getElementById('act-visits-btn'));
