@@ -294,6 +294,9 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Manrop
         <div class="f-chip" onclick="filterMem('active',this)">Активные</div>
         <div class="f-chip" onclick="filterMem('inactive',this)">Неактивные</div>
       </div>
+      <div style="padding:0 16px;margin-bottom:12px">
+        <input class="inp" id="mem-search" placeholder="🔍 Поиск по имени или номеру..." oninput="searchMem(this.value)" style="margin:0"/>
+      </div>
       <div class="mem-list" id="mem-list"></div>
     </div>
 
@@ -344,7 +347,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Manrop
     </div>
 
     <div class="action-btns">
-      <button class="btn-action visit" id="btn-visit-action" onclick="doVisit()">✓ Отметить посещение</button>
+      <button class="btn-action visit" id="btn-visit-action" onclick="doVisit()">✓ Отметить визит</button>
       <button class="btn-action activate" onclick="toggleActForm()">⊕ Активировать абонемент</button>
     </div>
 
@@ -704,8 +707,12 @@ async function doActivate() {
 // ── Memberships ──
 let allUsers = [];
 let memFilter = 'all';
+let memQuery = '';
 
 async function loadMemberships() {
+  memQuery = '';
+  const el = document.getElementById('mem-search');
+  if (el) el.value = '';
   loading(true);
   allUsers = (await dbGetAll('users')).filter(u=>u.role==='client'||!u.role);
   loading(false);
@@ -719,11 +726,17 @@ function filterMem(f, el) {
   renderMemList();
 }
 
+function searchMem(q) {
+  memQuery = q.trim().toLowerCase();
+  renderMemList();
+}
+
 function renderMemList() {
   const list = document.getElementById('mem-list');
   let users = allUsers;
   if (memFilter==='active') users = users.filter(u=>u.membership?.active && new Date(u.membership?.until)>new Date());
   if (memFilter==='inactive') users = users.filter(u=>!u.membership?.active || new Date(u.membership?.until)<=new Date());
+  if (memQuery) users = users.filter(u=>(u.name||'').toLowerCase().includes(memQuery)||(u.phone||'').includes(memQuery));
 
   if (!users.length) {
     list.innerHTML = '<div class="empty-state"><div class="empty-icon">🎫</div><div class="empty-text">Нет данных</div></div>';
