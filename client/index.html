@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
 <title>FitPass</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Manrope:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"/>
@@ -10,6 +10,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 <style>
 :root{
   --bg:#0c0c0c; --bg2:#131313; --bg3:#1b1b1b; --bg4:#222;
@@ -22,7 +23,7 @@
   --safe-bot:env(safe-area-inset-bottom,0px);
 }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Manrope',sans-serif;overflow:hidden;-webkit-font-smoothing:antialiased}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Manrope',sans-serif;overflow:hidden;-webkit-font-smoothing:antialiased;touch-action:pan-x pan-y}
 
 /* ── Screens ── */
 .screen{position:fixed;inset:0;display:none;flex-direction:column;background:var(--bg);padding-top:var(--safe-top)}
@@ -94,9 +95,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Manrop
 .barcode-card{margin:14px 16px;background:linear-gradient(145deg,var(--bg2) 0%,var(--bg3) 100%);border:1px solid var(--border2);border-radius:20px;padding:20px;text-align:center;position:relative;overflow:hidden}
 .barcode-card::after{content:'';position:absolute;top:-50px;right:-50px;width:140px;height:140px;border-radius:50%;background:var(--reddim);pointer-events:none}
 .bc-label{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:2.5px;color:var(--text3);margin-bottom:12px}
-.barcode-wrap{background:#fff;border-radius:10px;padding:12px 10px 8px;display:inline-block}
-#barcode-svg{display:block}
-.bc-code-text{font-size:10px;color:#444;margin-top:5px;letter-spacing:1.5px;font-family:'Manrope',monospace;font-weight:700}
+.barcode-wrap{background:#fff;border-radius:10px;padding:8px 6px 4px;display:inline-block;max-width:100%}
+#barcode-svg{display:block;max-width:100%;height:auto}
 
 /* Status */
 .status-card{margin:0 16px 12px;border-radius:var(--r);border:1.5px solid;padding:13px 16px;display:flex;align-items:center;gap:12px}
@@ -345,8 +345,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Manrop
       <div class="barcode-card">
         <div class="bc-label">Ваш персональный пропуск</div>
         <div class="barcode-wrap">
-          <canvas id="barcode-canvas" width="220" height="64"></canvas>
-          <div class="bc-code-text" id="bc-code-text"></div>
+          <svg id="barcode-svg"></svg>
         </div>
       </div>
 
@@ -668,8 +667,9 @@ async function dbAdd(col, data){
 }
 async function dbQuery(col, field, op, val){
   try{
-    const s=await db.collection(col).where(field,op,val).orderBy('_u','desc').get();
-    return s.docs.map(d=>({id:d.id,...d.data()}));
+    const s=await db.collection(col).where(field,op,val).get();
+    const results=s.docs.map(d=>({id:d.id,...d.data()}));
+    return results.sort((a,b)=>new Date(b._u||'0')-new Date(a._u||'0'));
   }catch(e){
     const r=[];
     for(let i=0;i<localStorage.length;i++){
@@ -677,7 +677,7 @@ async function dbQuery(col, field, op, val){
       if(!k||!k.startsWith(`fp_${col}_`))continue;
       try{const d=JSON.parse(localStorage.getItem(k));if(d&&d[field]===val)r.push({id:k.replace(`fp_${col}_`,''),...d});}catch(ee){}
     }
-    return r.sort((a,b)=>new Date(b._u)-new Date(a._u));
+    return r.sort((a,b)=>new Date(b._u||'0')-new Date(a._u||'0'));
   }
 }
 
@@ -702,39 +702,38 @@ function fmtDateTime(iso){if(!iso)return'—';const d=new Date(iso);return d.toL
 function fmtDur(sec){return`${pad(Math.floor(sec/3600))}:${pad(Math.floor(sec%3600/60))}:${pad(sec%60)}`;}
 
 // ══════════════════════════════════════════
-// BARCODE (Code 128 B simplified visual)
+// BARCODE — 8-digit CODE128 via JsBarcode
 // ══════════════════════════════════════════
-function drawBarcode(uid){
-  const canvas=document.getElementById('barcode-canvas');
-  const ctx=canvas.getContext('2d');
-  const W=220,H=64;
-  ctx.clearRect(0,0,W,H);
-  ctx.fillStyle='#fff';
-  ctx.fillRect(0,0,W,H);
-  // Generate deterministic bar pattern from uid bytes
-  const bytes=[];
-  for(let i=0;i<16;i++){bytes.push(parseInt(uid.substr(i*2,2),16));}
-  let bits=[];
-  // Start bar, data, stop bar pattern
-  const startStop=[1,1,0,1,0,0,0,1,0,1,1,0]; // simplified CODE 128 B guard
-  bits=[...startStop];
-  bytes.forEach(b=>{
-    for(let i=7;i>=0;i--)bits.push((b>>i)&1);
-  });
-  bits=[...bits,...startStop];
-  const bw=W/bits.length;
-  ctx.fillStyle='#000';
-  bits.forEach((on,i)=>{
-    if(on)ctx.fillRect(i*bw,0,Math.max(bw-0.5,0.8),H*0.88);
-  });
-  // Code text
-  document.getElementById('bc-code-text').textContent=uid.substring(0,8).toUpperCase()+'···'+uid.slice(-4).toUpperCase();
+function generateBarcodeNum(){
+  return String(Math.floor(10000000+Math.random()*90000000));
+}
+function drawBarcode(num){
+  try{
+    JsBarcode('#barcode-svg',String(num),{
+      format:'CODE128',
+      width:2.4,
+      height:62,
+      displayValue:true,
+      font:'Manrope',
+      fontSize:15,
+      textMargin:6,
+      margin:10,
+      background:'#ffffff',
+      lineColor:'#000000'
+    });
+  }catch(e){
+    document.getElementById('barcode-svg').textContent=String(num);
+  }
 }
 
 // ══════════════════════════════════════════
 // BOOT
 // ══════════════════════════════════════════
 window.addEventListener('DOMContentLoaded',async()=>{
+  // Block pinch-zoom
+  document.addEventListener('touchmove',function(e){if(e.touches.length>1)e.preventDefault();},{passive:false});
+  document.addEventListener('gesturestart',function(e){e.preventDefault();},{passive:false});
+
   if(new URLSearchParams(location.search).get('reset')==='1'){localStorage.clear();location.replace(location.pathname);return;}
   load();
   const urlUid=new URLSearchParams(location.search).get('uid');
@@ -777,7 +776,8 @@ async function doRegister(){
   const phone=document.getElementById('ob-phone').value.trim();
   if(!name){toast('Введите имя','err');return;}
   loading(true);
-  const userData={uid:STATE.uid,name,phone,role:'client',createdAt:new Date().toISOString(),membership:null};
+  const barcodeNum=generateBarcodeNum();
+  const userData={uid:STATE.uid,name,phone,role:'client',barcodeNum,createdAt:new Date().toISOString(),membership:null};
   await dbSet('users',STATE.uid,userData);
   STATE.user=userData;STATE.registered=true;save();
   loading(false);
@@ -804,13 +804,20 @@ function showPage(name){
 async function renderHome(){
   if(!STATE.user)return;
   document.getElementById('home-greet').textContent='Привет, '+STATE.user.name.split(' ')[0]+' 👋';
-  drawBarcode(STATE.uid);
 
   // Refresh from Firebase
   loading(true);
   const fresh=await dbGet('users',STATE.uid);
   loading(false);
   if(fresh){STATE.user={...STATE.user,...fresh};save();}
+
+  // Generate barcodeNum for existing users who don't have one
+  if(!STATE.user.barcodeNum){
+    const bn=generateBarcodeNum();
+    await dbSet('users',STATE.uid,{barcodeNum:bn});
+    STATE.user.barcodeNum=bn;save();
+  }
+  drawBarcode(STATE.user.barcodeNum);
 
   const mem=STATE.user.membership;
   const sc=document.getElementById('status-card');
@@ -911,8 +918,26 @@ const EXDB = {
 };
 
 let customEx=[];
-function loadCustomEx(){try{customEx=JSON.parse(localStorage.getItem(`fp_cex_${STATE.uid}`)||'[]');}catch(e){customEx=[];}}
+let hiddenEx=[];
+function loadCustomEx(){
+  try{customEx=JSON.parse(localStorage.getItem(`fp_cex_${STATE.uid}`)||'[]');}catch(e){customEx=[];}
+  loadHiddenEx();
+}
 function saveCustomEx_(){try{localStorage.setItem(`fp_cex_${STATE.uid}`,JSON.stringify(customEx));}catch(e){}}
+function loadHiddenEx(){try{hiddenEx=JSON.parse(localStorage.getItem(`fp_hidex_${STATE.uid}`)||'[]');}catch(e){hiddenEx=[];}}
+function saveHiddenEx(){try{localStorage.setItem(`fp_hidex_${STATE.uid}`,JSON.stringify(hiddenEx));}catch(e){}}
+function deleteExercise(exId,isCustom){
+  if(isCustom){
+    customEx=customEx.filter(e=>(e.id||e.name)!==exId);
+    saveCustomEx_();
+  } else {
+    loadHiddenEx();
+    if(!hiddenEx.includes(exId))hiddenEx.push(exId);
+    saveHiddenEx();
+  }
+  renderExList();
+  toast('Упражнение убрано из списка','ok');
+}
 
 let currentCat='all';
 const catLabels={cardio:'🏃 Кардио',upper:'💪 Верх',back:'🔙 Спина/Торс',legs:'🦵 Ноги',custom:'⭐ Мои'};
@@ -937,20 +962,24 @@ function renderExList(){
   else if(currentCat==='custom')exes=[...customEx];
   else exes=[...(EXDB[currentCat]||[]),...customEx.filter(e=>e.cat===currentCat)];
 
+  // Filter out hidden (deleted) exercises
+  exes=exes.filter(ex=>!hiddenEx.includes(ex.id||ex.name));
+
   if(!exes.length){
-    list.innerHTML='<div class="empty-state"><div class="es-icon">📭</div><div class="es-title">Нет упражнений</div></div>';
+    list.innerHTML='<div class="empty-state"><div class="es-icon">📭</div><div class="es-title">Нет упражнений</div><div class="es-sub">Добавьте своё или восстановите удалённые</div></div>';
     return;
   }
-  list.innerHTML=exes.map(ex=>`
-    <div class="ex-item" onclick="openExModal('${(ex.id||ex.name).replace(/'/g,"\\'")}')">
+  list.innerHTML=exes.map(ex=>{
+    const safeId=(ex.id||ex.name).replace(/"/g,'&quot;');
+    return`<div class="ex-item" data-exid="${safeId}" onclick="openExModal(this.dataset.exid)">
       <div class="ex-item-icon">${ex.icon||'💪'}</div>
       <div style="flex:1;min-width:0">
         <div class="ex-item-name">${ex.name}</div>
         <div class="ex-item-sub">${catLabels[ex.cat]||ex.cat}</div>
       </div>
-      <div class="ex-arrow">›</div>
-    </div>
-  `).join('');
+      <button class="icon-btn del" data-exid="${safeId}" data-custom="${!!ex.isCustom}" onclick="event.stopPropagation();deleteExercise(this.dataset.exid,this.dataset.custom==='true')" title="Убрать">✕</button>
+    </div>`;
+  }).join('');
 }
 
 // ══════════════════════════════════════════
@@ -1164,7 +1193,16 @@ function dupSet(ei,si){
 async function finishWorkout(){
   if(!activeWorkout.length)return;
   loading(true);
-  await dbAdd('workouts',{uid:STATE.uid,date:new Date().toISOString(),durationSec:_timerSec,exercises:activeWorkout});
+  const workoutData={durationSec:_timerSec,exercises:activeWorkout,completedAt:new Date().toISOString()};
+  // Attach workout to the most recent visit (recorded by admin scan)
+  const visits=await dbQuery('visits','uid','==',STATE.uid);
+  if(visits.length>0){
+    // visits are sorted desc by _u, so first = most recent
+    await dbSet('visits',visits[0].id,{workout:workoutData});
+  } else {
+    // No admin visit yet — save standalone so it's not lost
+    await dbAdd('workouts',{uid:STATE.uid,date:new Date().toISOString(),...workoutData});
+  }
   activeWorkout=[];
   timerReset();
   renderActiveWorkout();
@@ -1194,47 +1232,57 @@ async function renderHistory(){
   const list=document.getElementById('visit-list');
   list.innerHTML='<div class="empty-state"><div class="spinner" style="margin:0 auto 12px"></div><div class="es-title">Загрузка...</div></div>';
 
-  const workouts=await dbQuery('workouts','uid','==',STATE.uid);
-  if(!workouts.length){
-    list.innerHTML='<div class="empty-state"><div class="es-icon">📋</div><div class="es-title">Нет тренировок</div><div class="es-sub">Начните первую тренировку!</div></div>';
+  const visits=await dbQuery('visits','uid','==',STATE.uid);
+  if(!visits.length){
+    list.innerHTML='<div class="empty-state"><div class="es-icon">📋</div><div class="es-title">Нет посещений</div><div class="es-sub">Посещения появятся после сканирования пропуска</div></div>';
     return;
   }
 
-  list.innerHTML=workouts.map(w=>{
-    const exCount=(w.exercises||[]).length;
-    const totalSets=(w.exercises||[]).reduce((a,e)=>a+(e.sets||[]).length,0);
-    const dur=w.durationSec?fmtDur(w.durationSec):'—';
-    return`<div class="visit-item" onclick="openWorkoutDetail('${w.id}')">
-      <div class="vi-icon">🏋️</div>
+  list.innerHTML=visits.map(v=>{
+    const wk=v.workout;
+    const hasWk=wk&&(wk.exercises||[]).length>0;
+    const exCount=hasWk?(wk.exercises||[]).length:0;
+    const totalSets=hasWk?(wk.exercises||[]).reduce((a,e)=>a+(e.sets||[]).length,0):0;
+    const dur=hasWk&&wk.durationSec?fmtDur(wk.durationSec):null;
+    const sub=hasWk
+      ?`${exCount} упр. · ${totalSets} подходов${dur?' · '+dur:''}`
+      :'Посещение (тренировка не сохранена)';
+    return`<div class="visit-item" onclick="openWorkoutDetail('${v.id}')">
+      <div class="vi-icon">${hasWk?'🏋️':'🚪'}</div>
       <div class="vi-info">
-        <div class="vi-date">${fmtDate(w.date)}</div>
-        <div class="vi-sub">${fmtDateTime(w.date).split(' ').slice(-1)} · ${exCount} упр. · ${totalSets} подходов · ${dur}</div>
+        <div class="vi-date">${fmtDateTime(v.date)}</div>
+        <div class="vi-sub">${sub}</div>
       </div>
       <div class="vi-arrow">›</div>
     </div>`;
   }).join('');
 }
 
-async function openWorkoutDetail(wid){
+async function openWorkoutDetail(visitId){
   loading(true);
-  const workouts=await dbQuery('workouts','uid','==',STATE.uid);
+  const visits=await dbQuery('visits','uid','==',STATE.uid);
   loading(false);
-  const w=workouts.find(x=>x.id===wid);
-  if(!w)return;
+  const v=visits.find(x=>x.id===visitId);
+  if(!v)return;
 
-  document.getElementById('mo-wd-title').textContent='💪 '+fmtDateTime(w.date);
-  const exes=w.exercises||[];
+  document.getElementById('mo-wd-title').textContent='🏋️ '+fmtDateTime(v.date);
+  const wk=v.workout;
+  if(!wk||(wk.exercises||[]).length===0){
+    document.getElementById('mo-wd-body').innerHTML='<div style="color:var(--text3);padding:8px 0">Тренировка не была зафиксирована для этого посещения</div>';
+    openMo('mo-wd');
+    return;
+  }
+
   let html='';
-  if(w.durationSec)html+=`<div style="font-size:12px;color:var(--text2);margin-bottom:14px;font-weight:700">⏱ Длительность: ${fmtDur(w.durationSec)}</div>`;
-
-  exes.forEach(entry=>{
+  if(wk.durationSec)html+=`<div style="font-size:12px;color:var(--text2);margin-bottom:14px;font-weight:700">⏱ Длительность: ${fmtDur(wk.durationSec)}</div>`;
+  (wk.exercises||[]).forEach(entry=>{
     html+=`<div class="wd-ex"><div class="wd-ex-name">${entry.icon||'💪'} ${entry.exName}</div>`;
     (entry.sets||[]).forEach((s,si)=>{
       html+=`<div class="wd-set"><div class="wd-set-num">${si+1}</div><div>${setDesc(s)}</div></div>`;
     });
     html+='</div>';
   });
-  document.getElementById('mo-wd-body').innerHTML=html||'<div style="color:var(--text3)">Нет данных</div>';
+  document.getElementById('mo-wd-body').innerHTML=html;
   openMo('mo-wd');
 }
 

@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
 <title>FitPass Admin</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
@@ -24,7 +24,7 @@
   --safe-bot:env(safe-area-inset-bottom,0px);
 }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Manrope',sans-serif;overflow:hidden}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Manrope',sans-serif;overflow:hidden;touch-action:pan-x pan-y}
 
 .screen{position:fixed;inset:0;display:none;flex-direction:column;background:var(--bg);padding-top:var(--safe-top)}
 .screen.active{display:flex}
@@ -485,6 +485,8 @@ function fmtDateTime(iso) { if(!iso) return '—'; const d=new Date(iso); return
 
 // ── Boot ──
 window.addEventListener('DOMContentLoaded', async () => {
+  document.addEventListener('touchmove',function(e){if(e.touches.length>1)e.preventDefault();},{passive:false});
+  document.addEventListener('gesturestart',function(e){e.preventDefault();},{passive:false});
   await new Promise(r => setTimeout(r, 1200));
   document.getElementById('s-splash').classList.remove('active');
   if (isLoggedIn()) { showScreen('s-main'); loadHomePage(); }
@@ -591,19 +593,24 @@ function closeScanner() {
 }
 
 async function handleScannedCode(code) {
-  // UID is 64 hex chars
-  const uid = code.replace(/[^a-f0-9]/gi, '').toLowerCase();
-  if (uid.length !== 64) {
-    // Try as substring
-    toast('Неверный код пропуска','err');
-    return;
-  }
-  scannedUid = uid;
+  const clean = code.replace(/\s/g,'').trim();
+  let user = null;
+  let uid = null;
+
   loading(true);
-  const user = await dbGet('users', uid);
+  if (/^\d{8}$/.test(clean)) {
+    // 8-digit barcode number — look up by barcodeNum field
+    const results = await dbQuery('users','barcodeNum','==',clean);
+    if (results.length > 0) { user = results[0]; uid = user.id; }
+  } else {
+    // Legacy: 64-char hex UID
+    const possibleUid = clean.replace(/[^a-f0-9]/gi,'').toLowerCase();
+    if (possibleUid.length === 64) { user = await dbGet('users', possibleUid); uid = possibleUid; }
+  }
   loading(false);
 
-  if (!user) { toast('Клиент не найден','err'); return; }
+  if (!user || !uid) { toast('Клиент не найден','err'); return; }
+  scannedUid = uid;
 
   // Fill modal
   document.getElementById('scan-client-name').textContent = user.name || '—';
