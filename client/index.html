@@ -751,13 +751,23 @@ window.addEventListener('DOMContentLoaded',async()=>{
   // Wait for anonymous auth before any Firestore read
   try{ await firebase.auth().signInAnonymously(); }catch(e){ console.warn('auth',e); }
 
-  // Check Firestore DIRECTLY — never use localStorage cache here
-  // so deleted collections are always detected correctly
+  // Always clear stale Firestore-backed caches so deleted server data is detected
+  (['users','user_links','visits','measurements']).forEach(col=>{
+    const prefix=`fp_${col}_`;
+    const keys=[];
+    for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.startsWith(prefix))keys.push(k);}
+    keys.forEach(k=>localStorage.removeItem(k));
+  });
+
+  // Read from server directly — bypass Firestore SDK in-memory cache
   let existing=null;
   try{
-    const snap=await db.collection('users').doc(STATE.uid).get();
+    const snap=await db.collection('users').doc(STATE.uid).get({source:'server'});
     if(snap.exists) existing=snap.data();
-  }catch(e){ console.warn('users read',e); }
+  }catch(e){
+    console.warn('server read failed, trying cache',e);
+    try{const snap2=await db.collection('users').doc(STATE.uid).get();if(snap2.exists)existing=snap2.data();}catch(e2){}
+  }
 
   loading(false);
 
@@ -793,7 +803,14 @@ async function doRegister(){
   loading(true);
   const barcodeNum=generateBarcodeNum();
   const userData={uid:STATE.uid,name,phone,role:'client',barcodeNum,createdAt:new Date().toISOString(),membership:null};
-  await dbSet('users',STATE.uid,userData);
+  try{
+    await db.collection('users').doc(String(STATE.uid)).set({...userData,_u:new Date().toISOString()},{merge:true});
+  }catch(e){
+    loading(false);
+    toast('Ошибка сохранения. Проверьте соединение.','err');
+    console.error('doRegister Firestore write failed',e);
+    return;
+  }
   STATE.user=userData;STATE.registered=true;save();
   loading(false);
   showScreen('s-main');
