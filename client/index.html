@@ -223,6 +223,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Manrop
 .mf-inp{width:80px;padding:7px 10px;border-radius:8px;border:1.5px solid var(--border2);background:var(--bg3);color:var(--text);font-family:'Manrope',sans-serif;font-size:13px;font-weight:700;outline:none;text-align:right;transition:border-color .2s}
 .mf-inp:focus{border-color:var(--red)}
 .mf-unit{font-size:11px;color:var(--text3);min-width:24px}
+.mf-del{background:none;border:none;color:var(--text3);font-size:15px;cursor:pointer;padding:4px 2px;line-height:1;flex-shrink:0;transition:color .15s}
+.mf-del:active{color:var(--red)}
 .btn-save{margin:12px 16px;width:calc(100% - 32px);padding:12px;border-radius:var(--r2);border:none;background:var(--red);color:#fff;font-family:'Manrope',sans-serif;font-size:13px;font-weight:800;cursor:pointer;transition:opacity .2s}
 .btn-save:active{opacity:.8}
 
@@ -367,10 +369,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Manrop
           <div class="mt-val red" id="m-until">—</div>
         </div>
         <div class="mem-tile">
-          <div class="mt-label">Стоимость</div>
-          <div class="mt-val" id="m-price">—</div>
-        </div>
-        <div class="mem-tile">
           <div class="mt-label">Осталось</div>
           <div class="mt-val green" id="m-left">—</div>
         </div>
@@ -417,6 +415,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Manrop
       <div class="ex-list" id="ex-list"></div>
       <div class="add-ex-wrap">
         <button class="btn-dashed" onclick="openMo('mo-add-ex')">+ Добавить своё упражнение</button>
+        <button class="btn-dashed" style="margin-top:8px;color:var(--text3);border-color:var(--border)" onclick="resetExercises()">↺ Вернуть изначальные</button>
       </div>
 
       <!-- Active workout -->
@@ -868,7 +867,6 @@ async function renderHome(){
     document.getElementById('mem-grid').style.display='grid';
     document.getElementById('m-bought').textContent=fmtDateShort(mem.activatedAt);
     document.getElementById('m-until').textContent=fmtDate(mem.until);
-    document.getElementById('m-price').textContent=mem.price?mem.price+' ₸':'—';
 
     if(mem.unlimited){
       document.getElementById('m-left').textContent='∞ безлимит';
@@ -959,6 +957,16 @@ function loadCustomEx(){
 function saveCustomEx_(){try{localStorage.setItem(`fp_cex_${STATE.uid}`,JSON.stringify(customEx));}catch(e){}}
 function loadHiddenEx(){try{hiddenEx=JSON.parse(localStorage.getItem(`fp_hidex_${STATE.uid}`)||'[]');}catch(e){hiddenEx=[];}}
 function saveHiddenEx(){try{localStorage.setItem(`fp_hidex_${STATE.uid}`,JSON.stringify(hiddenEx));}catch(e){}}
+function resetExercises(){
+  if(!confirm('Удалить все свои упражнения и восстановить исходные?'))return;
+  if(!confirm('Подтвердите ещё раз — это необратимо.'))return;
+  customEx=[];
+  hiddenEx=[];
+  saveCustomEx_();
+  saveHiddenEx();
+  renderExList();
+  toast('Список упражнений восстановлен ✓','ok');
+}
 function deleteExercise(exId,isCustom){
   if(isCustom){
     customEx=customEx.filter(e=>(e.id||e.name)!==exId);
@@ -1351,8 +1359,16 @@ function renderParamFields(){
       <label>${p.label}</label>
       <input class="mf-inp" id="mf-${p.key}" type="number" placeholder="—" step="0.1"/>
       <div class="mf-unit">${p.unit}</div>
+      <button class="mf-del" onclick="deleteParam('${p.key}')" title="Удалить">✕</button>
     </div>
   `).join('');
+}
+function deleteParam(key){
+  if(!confirm('Удалить этот параметр?\nЗаписанные данные останутся в истории.'))return;
+  loadParams();
+  userParams=userParams.filter(p=>p.key!==key);
+  saveParams();
+  renderParamFields();
 }
 
 async function renderLatestMeas(){
