@@ -358,7 +358,9 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Manrop
       </div>
       <div class="mo-label">Срок действия (месяцев)</div>
       <input class="mo-inp" id="act-months" type="number" placeholder="1" min="1" value="1"/>
-      <button class="btn-action activate" style="margin-top:4px" onclick="doActivate()">✓ Подтвердить активацию</button>
+      <div class="mo-label">Стоимость (₸, необязательно)</div>
+      <input class="mo-inp" id="act-price" type="number" placeholder="5000"/>
+      <button class="btn-red" onclick="doActivate()">Активировать →</button>
     </div>
 
     <button class="btn-outline" onclick="closeMo('mo-scan')">Закрыть</button>
@@ -678,6 +680,7 @@ function setActType(type, el) {
 async function doActivate() {
   if (!scannedUid) return;
   const months = parseInt(document.getElementById('act-months').value) || 1;
+  const price = document.getElementById('act-price').value || 0;
   let total = 0;
   const unlimited = actType === 'unlimited';
   if (!unlimited) {
@@ -690,7 +693,7 @@ async function doActivate() {
   const until = new Date(); until.setMonth(until.getMonth() + months);
   const membership = {
     active: true, activatedAt: new Date().toISOString(),
-    until: until.toISOString(), unlimited, total, used: 0
+    until: until.toISOString(), unlimited, total, used: 0, price: Number(price)
   };
   await dbSet('users', scannedUid, { membership });
   loading(false);
