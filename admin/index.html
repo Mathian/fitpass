@@ -145,6 +145,9 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Manrop
 .btn-outline{width:100%;padding:12px;border-radius:var(--r2);border:1.5px solid var(--border2);background:transparent;color:var(--text2);font-family:'Manrope',sans-serif;font-size:14px;font-weight:700;cursor:pointer;margin-top:8px;transition:all .2s}
 .btn-danger{width:100%;padding:12px;border-radius:var(--r2);border:1.5px solid rgba(229,57,53,.4);background:rgba(229,57,53,.1);color:var(--red);font-family:'Manrope',sans-serif;font-size:14px;font-weight:700;cursor:pointer;margin-top:8px;transition:all .2s}
 .btn-danger:active{background:var(--red);color:#fff}
+.inp{width:100%;padding:12px 14px;border-radius:var(--r2);border:1.5px solid var(--border2);background:var(--bg3);color:var(--text);font-family:'Manrope',sans-serif;font-size:14px;font-weight:600;outline:none;transition:border .2s}
+.inp::placeholder{color:var(--text3)}
+.inp:focus{border-color:var(--red)}
 
 /* Visit list in modal */
 .vis-list{display:flex;flex-direction:column;gap:6px;margin-bottom:14px;max-height:280px;overflow-y:auto}
@@ -358,9 +361,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Manrop
       </div>
       <div class="mo-label">Срок действия (месяцев)</div>
       <input class="mo-inp" id="act-months" type="number" placeholder="1" min="1" value="1"/>
-      <div class="mo-label">Стоимость (₸, необязательно)</div>
-      <input class="mo-inp" id="act-price" type="number" placeholder="5000"/>
-      <button class="btn-red" onclick="doActivate()">Активировать →</button>
+      <button class="btn-action activate" onclick="doActivate()" style="width:100%;margin-top:4px">⊕ Активировать абонемент</button>
     </div>
 
     <button class="btn-outline" onclick="closeMo('mo-scan')">Закрыть</button>
@@ -638,7 +639,6 @@ async function handleScannedCode(code) {
   document.getElementById('act-form').style.display = 'none';
   document.getElementById('act-count').value = '10';
   document.getElementById('act-months').value = '1';
-  document.getElementById('act-price').value = '';
   setActType('visits', document.getElementById('act-visits-btn'));
   openMo('mo-scan');
 }
@@ -680,7 +680,6 @@ function setActType(type, el) {
 async function doActivate() {
   if (!scannedUid) return;
   const months = parseInt(document.getElementById('act-months').value) || 1;
-  const price = document.getElementById('act-price').value || 0;
   let total = 0;
   const unlimited = actType === 'unlimited';
   if (!unlimited) {
@@ -693,7 +692,7 @@ async function doActivate() {
   const until = new Date(); until.setMonth(until.getMonth() + months);
   const membership = {
     active: true, activatedAt: new Date().toISOString(),
-    until: until.toISOString(), unlimited, total, used: 0, price: Number(price)
+    until: until.toISOString(), unlimited, total, used: 0
   };
   await dbSet('users', scannedUid, { membership });
   loading(false);
@@ -759,8 +758,7 @@ async function openMemDetail(uid) {
     <div class="src-mem-row"><div class="src-mem-label">Статус</div><div class="src-mem-val">${isActive?'✅ Активен':mem?'⏰ Истёк':'❌ Нет'}</div></div>
     ${mem?`<div class="src-mem-row"><div class="src-mem-label">Куплен</div><div class="src-mem-val">${fmtDate(mem.activatedAt)}</div></div>
     <div class="src-mem-row"><div class="src-mem-label">До</div><div class="src-mem-val">${fmtDate(mem.until)}</div></div>
-    <div class="src-mem-row"><div class="src-mem-label">Осталось</div><div class="src-mem-val">${left}</div></div>
-    ${mem.price?`<div class="src-mem-row"><div class="src-mem-label">Стоимость</div><div class="src-mem-val">${mem.price} ₸</div></div>`:''}`:
+    <div class="src-mem-row"><div class="src-mem-label">Осталось</div><div class="src-mem-val">${left}</div></div>`:
     '<div style="color:var(--text3);font-size:13px">Абонемент не активирован</div>'}
   `;
   // Load visits
